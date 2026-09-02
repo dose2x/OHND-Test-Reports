@@ -1,0 +1,18 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Data downloaded from the API (laps, telemetry CSVs, etc.)
+data/*
+!data/.gitkeep
+
+# OS / editor cruft
+.DS_Store
+.vscode/
+.idea/
