@@ -1,24 +1,25 @@
 """
 Notify pvisracing@gmx.com when new laps show up during a sync.
 
-This is a plain webhook POST, not a Zapier MCP call — the Zapier actions
-Claude used to set this up only work inside a live Claude session, but
-scripts/sync_laps.py needs to notify on its own, whenever you (or a cron
-job) run it. So instead, this hits a "Catch Hook" webhook URL from a Zap
-you build once in the Zapier web app:
+This sends the email directly via Resend (https://resend.com), a
+transactional email API with a free tier (100 emails/day, 3,000/month —
+plenty for lap syncing) and no OAuth/SMTP setup. No Zapier account is
+required for this piece: Zapier's own actions only run during a live
+Claude session, so they can't be triggered by an unattended script anyway,
+and Zapier's webhook trigger (the alternative) requires a paid plan.
 
-  1. https://zapier.com/app/editor -> Create Zap.
-  2. Trigger: "Webhooks by Zapier" -> "Catch Hook". Copy the webhook URL
-     it gives you into ZAPIER_NOTIFY_WEBHOOK_URL in .env.
-  3. Action: "Email by Zapier" -> "Send Outbound Email":
-       To:      pvisracing@gmx.com
-       Subject: New laps synced ({{count}})
-       Body:    {{summary}}
-     (count/summary come from the webhook's JSON payload, sent below.)
-  4. Turn the Zap on.
+Setup (one-time, free):
+  1. Sign up at https://resend.com.
+  2. Dashboard -> API Keys -> Create API Key.
+  3. Paste it into .env as RESEND_API_KEY.
 
-Until ZAPIER_NOTIFY_WEBHOOK_URL is set, this is a no-op — sync_laps.py
-still runs and prints what it found, it just won't send an email.
+By default this sends from Resend's shared "onboarding@resend.dev" address,
+which works immediately with no domain setup. If you verify your own
+sending domain in Resend later, set RESEND_FROM_EMAIL in .env to use it
+instead (e.g. "OHND Racing <laps@yourdomain.com>").
+
+Until RESEND_API_KEY is set, this is a no-op — sync_laps.py still runs and
+prints what it found, it just won't send an email.
 """
 
 from __future__ import annotations
@@ -28,30 +29,42 @@ import os
 import requests
 
 _MAX_LAPS_LISTED = 20
+_RESEND_API_URL = "https://api.resend.com/emails"
+_DEFAULT_FROM = "OHND Test Data App <onboarding@resend.dev>"
+_NOTIFY_TO = "pvisracing@gmx.com"
 
 
-def notify_new_laps(new_laps: list[dict], webhook_url: str | None = None) -> bool:
-    """POST a summary of newly-synced laps to the configured webhook.
+def notify_new_laps(new_laps: list[dict], api_key: str | None = None) -> bool:
+    """Email a summary of newly-synced laps to pvisracing@gmx.com.
 
     Returns True if a notification was sent, False if skipped (no laps,
-    or no webhook URL configured).
+    or no RESEND_API_KEY configured).
     """
     if not new_laps:
         return False
 
-    webhook_url = webhook_url or os.getenv("ZAPIER_NOTIFY_WEBHOOK_URL", "").strip()
-    if not webhook_url:
+    api_key = api_key or os.getenv("RESEND_API_KEY", "").strip()
+    if not api_key:
         return False
+
+    from_email = os.getenv("RESEND_FROM_EMAIL", "").strip() or _DEFAULT_FROM
 
     lines = [_describe_lap(lap) for lap in new_laps[:_MAX_LAPS_LISTED]]
     if len(new_laps) > _MAX_LAPS_LISTED:
         lines.append(f"...and {len(new_laps) - _MAX_LAPS_LISTED} more")
 
     payload = {
-        "count": len(new_laps),
-        "summary": "\n".join(lines),
+        "from": from_email,
+        "to": [_NOTIFY_TO],
+        "subject": f"New laps synced ({len(new_laps)})",
+        "text": "\n".join(lines),
     }
-    response = requests.post(webhook_url, json=payload, timeout=10)
+    response = requests.post(
+        _RESEND_API_URL,
+        json=payload,
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=10,
+    )
     response.raise_for_status()
     return True
 
