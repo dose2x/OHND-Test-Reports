@@ -75,24 +75,21 @@ can be layered on as the project's direction firms up.
 
 7. **(Optional) Get notified about new laps.** `scripts/sync_laps.py`
    detects which synced laps are new (vs. laps it's seen before) and can
-   send an email to **pvisracing@gmx.com** when it finds some. This goes
-   through a Zap you build once in the Zapier web app, since Claude's own
-   Zapier actions only run during a live chat session:
+   email **pvisracing@gmx.com** when it finds some. This is sent directly
+   from the script via [Resend](https://resend.com), a transactional email
+   API with a free tier (100 emails/day) — no Zapier plan needed (Zapier's
+   own actions only run during a live Claude session, and its webhook
+   trigger requires a paid plan):
 
-   1. In Zapier, create a new Zap.
-   2. Trigger: **Webhooks by Zapier** → **Catch Hook**. Copy the webhook
-      URL it gives you.
-   3. Action: **Email by Zapier** → **Send Outbound Email**:
-      - To: `pvisracing@gmx.com`
-      - Subject: `New laps synced ({{count}})`
-      - Body: `{{summary}}`
-      (`count` and `summary` come from the webhook payload `sync_laps.py`
-      sends — see `storage/notify.py`.)
-   4. Turn the Zap on, then paste the webhook URL into
-      `ZAPIER_NOTIFY_WEBHOOK_URL` in `.env`.
+   1. Sign up for a free account at <https://resend.com>.
+   2. Dashboard → **API Keys** → **Create API Key**.
+   3. Paste it into `.env` as `RESEND_API_KEY`.
 
-   Until that's set, `sync_laps.py` still runs and prints what it found —
-   it just skips sending the email.
+   That's it — it sends from Resend's shared `onboarding@resend.dev`
+   address by default, no domain setup required. (If you later verify your
+   own sending domain in Resend, set `RESEND_FROM_EMAIL` in `.env` to use
+   it instead.) Until `RESEND_API_KEY` is set, `sync_laps.py` still runs
+   and prints what it found — it just skips sending the email.
 
 ## Project layout
 
@@ -109,7 +106,7 @@ ohnd-test-data-app/
 ├── storage/              # Cloudflare D1 storage layer
 │   ├── config.py        # Loads CLOUDFLARE_* from .env
 │   ├── d1_client.py      # D1Client — upserts laps via D1's HTTP query API
-│   └── notify.py         # Emails pvisracing@gmx.com about new laps (via a Zap webhook)
+│   └── notify.py         # Emails pvisracing@gmx.com about new laps (via Resend)
 ├── scripts/
 │   ├── test_connection.py
 │   └── sync_laps.py      # Pulls laps from Garage 61, stores in D1, notifies on new ones
@@ -157,10 +154,12 @@ a new token with additional scopes from the
 
 - **GitHub:** [dose2x/OHND-Test-Reports](https://github.com/dose2x/OHND-Test-Reports) — this code is pushed here
 - **Cloudflare D1:** `ohnd-telemetry` database, `laps` table, schema verified live (see above)
-- **Zapier:** GitHub connected (used to push this code); email notifications
-  configured to send to pvisracing@gmx.com — test email sent successfully.
-  The last piece (a webhook-triggered Zap so `sync_laps.py` can notify on
-  its own) needs to be built once in the Zapier web app — see step 7 above.
+- **Zapier:** GitHub connected (used to push this code); not used for
+  notifications — Webhooks by Zapier requires a paid plan, so new-lap
+  emails are sent directly from `sync_laps.py` via Resend instead (see
+  step 7 above).
+- **Resend:** not yet configured — sign up free and add `RESEND_API_KEY`
+  to `.env` per step 7 to enable new-lap email notifications.
 - **Garage 61:** token received and configured in `.env` locally, but not
   yet verified end-to-end — this sandbox can't reach garage61.net
   (network policy), so run `python scripts/test_connection.py` on your own
