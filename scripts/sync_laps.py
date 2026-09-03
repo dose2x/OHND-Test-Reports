@@ -75,8 +75,8 @@ def main() -> None:
             print(f"Sent notification for {len(new_laps)} new laps.")
         else:
             print(
-                f"{len(new_laps)} new laps found, but ZAPIER_NOTIFY_WEBHOOK_URL "
-                "isn't set — skipping notification. See storage/notify.py."
+                f"{len(new_laps)} new laps found, but RESEND_API_KEY isn't "
+                "set — skipping notification. See storage/notify.py."
             )
 
 
