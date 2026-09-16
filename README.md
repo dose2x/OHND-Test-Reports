@@ -75,7 +75,7 @@ can be layered on as the project's direction firms up.
 
 7. **(Optional) Get notified about new laps.** `scripts/sync_laps.py`
    detects which synced laps are new (vs. laps it's seen before) and can
-   email **pvisracing@gmx.com** when it finds some. This is sent directly
+   email the configured notification address when it finds some. This is sent directly
    from the script via [Resend](https://resend.com), a transactional email
    API with a free tier (100 emails/day) — no Zapier plan needed (Zapier's
    own actions only run during a live Claude session, and its webhook
@@ -106,7 +106,7 @@ ohnd-test-data-app/
 ├── storage/              # Cloudflare D1 storage layer
 │   ├── config.py        # Loads CLOUDFLARE_* from .env
 │   ├── d1_client.py      # D1Client — upserts laps via D1's HTTP query API
-│   └── notify.py         # Emails pvisracing@gmx.com about new laps (via Resend)
+│   └── notify.py         # Emails the configured notification address about new laps (via Resend)
 ├── scripts/
 │   ├── test_connection.py
 │   └── sync_laps.py      # Pulls laps from Garage 61, stores in D1, notifies on new ones
