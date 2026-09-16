@@ -84,12 +84,14 @@ can be layered on as the project's direction firms up.
    1. Sign up for a free account at <https://resend.com>.
    2. Dashboard → **API Keys** → **Create API Key**.
    3. Paste it into `.env` as `RESEND_API_KEY`.
+   4. Set `RESEND_TO_EMAIL` in `.env` to the address that should receive alerts.
 
-   That's it — it sends from Resend's shared `onboarding@resend.dev`
-   address by default, no domain setup required. (If you later verify your
-   own sending domain in Resend, set `RESEND_FROM_EMAIL` in `.env` to use
-   it instead.) Until `RESEND_API_KEY` is set, `sync_laps.py` still runs
-   and prints what it found — it just skips sending the email.
+   It sends from Resend's shared `onboarding@resend.dev` address by
+   default, no domain setup required. (If you later verify your own
+   sending domain in Resend, set `RESEND_FROM_EMAIL` in `.env` to use it
+   instead.) Until both `RESEND_API_KEY` and `RESEND_TO_EMAIL` are set,
+   `sync_laps.py` still runs and prints what it found — it just skips
+   sending the email.
 
 ## Project layout
 
