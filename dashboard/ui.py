@@ -4,24 +4,15 @@ from __future__ import annotations
 
 import streamlit as st
 
-# Common statistics field names -> (display label, formatter).
-# The exact shape of /me/statistics and /teams/{id}/statistics isn't fully
-# documented, so we render any of these keys we recognize as metric tiles,
-# and fall back to a raw JSON view for everything else so nothing is lost.
-_KNOWN_STAT_FIELDS: dict[str, tuple[str, str]] = {
-    "totalLaps": ("Total laps", "int"),
-    "lapCount": ("Total laps", "int"),
-    "totalDistance": ("Total distance (km)", "km"),
-    "totalDistanceDriven": ("Total distance (km)", "km"),
-    "totalTime": ("Total time on track", "duration"),
-    "totalTimeDriven": ("Total time on track", "duration"),
-    "totalDrivingTime": ("Total time on track", "duration"),
-    "totalEvents": ("Events", "int"),
-    "eventCount": ("Events", "int"),
-    "totalSessions": ("Sessions", "int"),
-    "sessionCount": ("Sessions", "int"),
-    "memberCount": ("Team members", "int"),
-    "driverCount": ("Drivers", "int"),
+# /me/statistics and /teams/{team}/statistics return
+# {"drivingStatistics": [...]}, one row per day/track/car/session type
+# (https://garage61.net/developer/endpoints/v1/getStatistics). The tiles
+# show these fields summed across all rows: field -> (label, format).
+_STAT_TOTALS: dict[str, tuple[str, str]] = {
+    "lapsDriven": ("Laps driven", "int"),
+    "cleanLapsDriven": ("Clean laps", "int"),
+    "timeOnTrack": ("Time on track", "duration"),
+    "events": ("Events", "int"),
 }
 
 
@@ -44,46 +35,34 @@ def format_lap_time(seconds: float) -> str:
 
 
 def render_stat_tiles(stats: dict, columns: int = 4) -> None:
-    """Render any recognized statistics fields as metric tiles."""
-    if not stats:
+    """Render driving statistics totals as metric tiles."""
+    rows = (stats or {}).get("drivingStatistics") or []
+    if not rows:
         st.info("No statistics available yet.")
         return
 
-    tiles = []
-    for key, (label, kind) in _KNOWN_STAT_FIELDS.items():
-        if key not in stats or stats[key] is None:
-            continue
-        value = stats[key]
-        if kind == "duration":
-            display = format_duration(value)
-        elif kind == "km":
-            display = f"{value:,.0f}"
-        else:
-            display = f"{value:,}"
-        tiles.append((label, display))
-
-    if tiles:
-        cols = st.columns(columns)
-        for i, (label, display) in enumerate(tiles):
-            cols[i % columns].metric(label, display)
-    else:
-        st.caption("No recognized statistics fields — showing raw data below.")
+    cols = st.columns(columns)
+    for i, (field, (label, kind)) in enumerate(_STAT_TOTALS.items()):
+        total = sum(row.get(field) or 0 for row in rows)
+        display = format_duration(total) if kind == "duration" else f"{int(total):,}"
+        cols[i % columns].metric(label, display)
 
     with st.expander("Raw statistics data"):
         st.json(stats)
 
 
+def display_name(user: dict) -> str:
+    """/me has firstName, lastName and an optional nickName (no single name field)."""
+    full = " ".join(part for part in (user.get("firstName"), user.get("lastName")) if part)
+    return user.get("nickName") or full or "Unknown driver"
+
+
 def render_account_card(me: dict) -> None:
-    cols = st.columns([1, 3])
-    with cols[0]:
-        avatar = me.get("avatarUrl") or me.get("avatar")
-        if avatar:
-            st.image(avatar, width=96)
-    with cols[1]:
-        st.subheader(me.get("name") or "Unknown driver")
-        st.caption(me.get("email", ""))
-        if me.get("slug"):
-            st.caption(f"garage61.net/@{me['slug']}")
+    st.subheader(display_name(me))
+    if me.get("slug"):
+        st.caption(f"garage61.net/@{me['slug']}")
+    if me.get("subscriptionPlan"):
+        st.caption(f"Plan: {me['subscriptionPlan']}")
 
 
 def render_linked_accounts(accounts: list[dict]) -> None:
@@ -91,15 +70,17 @@ def render_linked_accounts(accounts: list[dict]) -> None:
         st.info("No linked accounts (e.g. iRacing) found.")
         return
     for account in accounts:
-        platform = account.get("platform", {})
-        name = platform.get("name") if isinstance(platform, dict) else platform
         with st.container(border=True):
-            cols = st.columns([3, 2, 2])
-            cols[0].markdown(f"**{account.get('name', 'Unknown')}**")
-            cols[1].caption(name or "Unknown platform")
-            rating = account.get("rating") or account.get("iRating")
-            if rating:
-                cols[2].caption(f"Rating: {rating}")
+            cols = st.columns([3, 2, 3])
+            cols[0].markdown(f"**{account.get('name') or 'Unknown'}**")
+            cols[1].caption(account.get("platform") or "Unknown platform")
+            # e.g. "Road iRating 2345 · Road Safety rating A 3.45"
+            ratings = [
+                " ".join(str(part) for part in (r.get("category"), r.get("type"), r.get("ratingDisplayAs") or r.get("rating")) if part)
+                for r in account.get("ratings") or []
+            ]
+            if ratings:
+                cols[2].caption(" · ".join(ratings))
 
 
 def render_teams(teams: list[dict]) -> None:
@@ -108,11 +89,6 @@ def render_teams(teams: list[dict]) -> None:
         return
     for team in teams:
         with st.container(border=True):
-            cols = st.columns([1, 4])
-            with cols[0]:
-                logo = team.get("logoUrl") or team.get("logo")
-                if logo:
-                    st.image(logo, width=56)
-            with cols[1]:
-                st.markdown(f"**{team.get('name', 'Unnamed team')}**")
-                st.caption(team.get("slug", ""))
+            owner = " · owner" if team.get("isOwner") else ""
+            st.markdown(f"**{team.get('name') or 'Unnamed team'}**")
+            st.caption(f"{team.get('slug', '')}{owner}")

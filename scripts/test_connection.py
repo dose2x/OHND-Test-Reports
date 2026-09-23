@@ -29,9 +29,9 @@ def main() -> None:
         sys.exit(1)
 
     print("Connected to Garage 61 as:")
-    print(f"  Name:  {me.get('name')}")
+    name = " ".join(p for p in (me.get('firstName'), me.get('lastName')) if p)
+    print(f"  Name:  {me.get('nickName') or name}")
     print(f"  Slug:  {me.get('slug')}")
-    print(f"  Email: {me.get('email')}")
 
     teams = client.find_teams()
     if teams:

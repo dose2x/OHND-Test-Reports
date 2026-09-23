@@ -17,6 +17,9 @@ from dashboard.data import get_client, get_me, get_my_accounts, get_my_statistic
 from dashboard.ui import render_account_card, render_linked_accounts, render_stat_tiles, render_teams
 from garage61 import Garage61APIError, Garage61AuthError
 
+# One section failing (API error or dropped connection) shouldn't take down the page.
+_SECTION_ERRORS = (Garage61APIError, requests.exceptions.RequestException)
+
 st.set_page_config(
     page_title="OHND Test Data App",
     page_icon="🏁",
@@ -75,7 +78,7 @@ def main() -> None:
     try:
         stats = get_my_statistics(client)
         render_stat_tiles(stats)
-    except Garage61APIError as exc:
+    except _SECTION_ERRORS as exc:
         st.error(f"Couldn't load statistics: {exc}")
 
     st.divider()
@@ -83,7 +86,7 @@ def main() -> None:
     try:
         accounts = get_my_accounts(client)
         render_linked_accounts(accounts)
-    except Garage61APIError as exc:
+    except _SECTION_ERRORS as exc:
         st.error(f"Couldn't load linked accounts: {exc}")
 
     st.divider()
@@ -103,7 +106,7 @@ def main() -> None:
                 )
                 team_stats = get_team_statistics(client, selected_slug)
                 render_stat_tiles(team_stats)
-    except Garage61APIError as exc:
+    except _SECTION_ERRORS as exc:
         st.error(f"Couldn't load teams: {exc}")
 
     with st.sidebar:

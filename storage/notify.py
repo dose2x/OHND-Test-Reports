@@ -29,6 +29,8 @@ import os
 
 import requests
 
+from .laps import driver_name, format_lap_time, track_name
+
 _MAX_LAPS_LISTED = 20
 _RESEND_API_URL = "https://api.resend.com/emails"
 _DEFAULT_FROM = "OHND Test Data App <onboarding@resend.dev>"
@@ -74,8 +76,7 @@ def notify_new_laps(new_laps: list[dict], api_key: str | None = None) -> bool:
 
 
 def _describe_lap(lap: dict) -> str:
-    driver = (lap.get("driver") or {}).get("name", "Unknown driver")
-    track = (lap.get("track") or {}).get("name", "Unknown track")
-    car = (lap.get("car") or {}).get("name", "Unknown car")
-    lap_time = lap.get("lapTime")
-    return f"- {driver}: {lap_time}s at {track} ({car})"
+    driver = driver_name(lap) or "Unknown driver"
+    track = track_name(lap) or "Unknown track"
+    car = (lap.get("car") or {}).get("name") or "Unknown car"
+    return f"- {driver}: {format_lap_time(lap.get('lapTime'))} at {track} ({car})"

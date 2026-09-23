@@ -58,8 +58,10 @@ can be layered on as the project's direction firms up.
    - Create a Cloudflare API token: Cloudflare dashboard → **My Profile →
      API Tokens → Create Token** → use the "Edit Cloudflare Workers" template
      or a custom token with **D1: Edit** permission, scoped to your account.
-   - Fill in `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in `.env`
-     (`CLOUDFLARE_D1_DATABASE_ID` is already filled in).
+   - Fill in `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID` and
+     `CLOUDFLARE_API_TOKEN` in `.env`. The database ID is shown by
+     `npx wrangler d1 info ohnd-telemetry` or on the database's page in the
+     Cloudflare dashboard. The table definition is in `schema.sql`.
    - Run:
 
      ```bash
@@ -68,9 +70,11 @@ can be layered on as the project's direction firms up.
 
      (Use real track/car IDs from `client.get_tracks()` / `client.get_cars()`
      — Garage 61 requires at least one of tracks/cars/drivers/teams to
-     search.) This upserts matching laps into the `laps` table in D1,
+     search.) This upserts every matching lap into the `laps` table in D1,
      storing both parsed columns (track, car, lap time, etc.) and the full
-     raw API response per lap. Laps not already in D1 are reported as
+     raw API response per lap. It pages through all results; use `--limit`
+     to cap how many are fetched, or `--group driver` to store only each
+     driver's personal best. Laps not already in D1 are reported as
      "new" — see the next step for getting notified about them.
 
 7. **(Optional) Get notified about new laps.** `scripts/sync_laps.py`
@@ -96,7 +100,7 @@ can be layered on as the project's direction firms up.
 ## Project layout
 
 ```
-ohnd-test-data-app/
+OHND-Test-Reports/
 ├── app.py               # Streamlit dashboard entry point (overview page)
 ├── dashboard/
 │   ├── data.py          # Cached wrappers around Garage61Client calls
@@ -108,11 +112,13 @@ ohnd-test-data-app/
 ├── storage/              # Cloudflare D1 storage layer
 │   ├── config.py        # Loads CLOUDFLARE_* from .env
 │   ├── d1_client.py      # D1Client — upserts laps via D1's HTTP query API
+│   ├── laps.py           # Reads driver/track/lap-time fields from a Garage 61 lap
 │   └── notify.py         # Emails the configured notification address about new laps (via Resend)
 ├── scripts/
 │   ├── test_connection.py
 │   └── sync_laps.py      # Pulls laps from Garage 61, stores in D1, notifies on new ones
 ├── data/                 # Downloaded laps/telemetry land here (gitignored)
+├── schema.sql            # D1 table definition for the laps table
 ├── .env.example
 └── requirements.txt
 ```
@@ -127,9 +133,11 @@ client = Garage61Client()
 me = client.get_me()
 tracks = client.get_tracks()
 
-# Find your own personal-best laps at a given track (see Garage 61's
+# Find your own personal-best lap at a given track (see Garage 61's
 # "Find laps" docs for all available filters, e.g. sessionTypes, minLapTime).
-laps = client.find_laps(tracks=[123], drivers=["me"])
+# find_all_laps pages through results and returns a plain list; group="none"
+# returns every lap instead of just personal bests.
+laps = client.find_all_laps(tracks=[123], drivers=["me"], group="driver")
 
 # Pull full telemetry for one lap as a pandas DataFrame.
 if laps:
@@ -155,17 +163,18 @@ a new token with additional scopes from the
 ## Infrastructure status
 
 - **GitHub:** [dose2x/OHND-Test-Reports](https://github.com/dose2x/OHND-Test-Reports) — this code is pushed here
-- **Cloudflare D1:** `ohnd-telemetry` database, `laps` table, schema verified live (see above)
+- **Cloudflare D1:** `ohnd-telemetry` database, `laps` table (definition in
+  `schema.sql`, checked against the live database 2026-09-23). No laps
+  stored yet.
 - **Zapier:** GitHub connected (used to push this code); not used for
   notifications — Webhooks by Zapier requires a paid plan, so new-lap
   emails are sent directly from `sync_laps.py` via Resend instead (see
   step 7 above).
 - **Resend:** not yet configured — sign up free and add `RESEND_API_KEY`
   to `.env` per step 7 to enable new-lap email notifications.
-- **Garage 61:** token received and configured in `.env` locally, but not
-  yet verified end-to-end — this sandbox can't reach garage61.net
-  (network policy), so run `python scripts/test_connection.py` on your own
-  machine to confirm it works.
+- **Garage 61:** not yet verified end-to-end. Run
+  `python scripts/test_connection.py` with your token in `.env` to confirm
+  it works.
 
 ## Next steps
 

@@ -12,6 +12,7 @@ can be used directly for anything not yet wrapped.
 from __future__ import annotations
 
 import io
+import time
 from typing import Any
 
 import pandas as pd
@@ -19,6 +20,15 @@ import requests
 
 from .config import Config
 from .exceptions import Garage61APIError, Garage61AuthError, Garage61RateLimitError
+
+# Seconds to wait for garage61.net before giving up, so an unattended sync
+# can't hang forever on a stalled connection.
+_TIMEOUT = 30
+# On 429 Too Many Requests, wait Retry-After seconds and retry this many times.
+_MAX_RETRIES = 3
+_MAX_RETRY_WAIT = 60
+# /laps returns at most 1000 laps per request.
+_LAPS_PAGE_SIZE = 1000
 
 
 class Garage61Client:
@@ -47,38 +57,43 @@ class Garage61Client:
             payload = response.json()
         except ValueError:
             payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
         message = payload.get("message", response.text or response.reason)
 
         if response.status_code == 401:
             raise Garage61AuthError(response.status_code, message, payload)
         if response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
             raise Garage61RateLimitError(
                 message,
-                retry_after=float(retry_after) if retry_after else None,
+                retry_after=_retry_after(response),
                 payload=payload,
             )
         raise Garage61APIError(response.status_code, message, payload)
 
-    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        response = self._session.get(self._url(path), params=_clean_params(params))
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        """Send a request, waiting and retrying when rate limited."""
+        for attempt in range(_MAX_RETRIES + 1):
+            response = self._session.request(method, self._url(path), timeout=_TIMEOUT, **kwargs)
+            if response.status_code != 429 or attempt == _MAX_RETRIES:
+                break
+            time.sleep(min(_retry_after(response) or 5, _MAX_RETRY_WAIT))
         self._handle_errors(response)
-        return response.json()
+        return response
+
+    def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return self._request("GET", path, params=_clean_params(params)).json()
 
     def _get_raw(self, path: str, params: dict[str, Any] | None = None) -> str:
         """Like `_get`, but returns the raw response body (e.g. CSV) as text."""
-        response = self._session.get(self._url(path), params=_clean_params(params))
-        self._handle_errors(response)
-        return response.text
+        return self._request("GET", path, params=_clean_params(params)).text
 
     def _post(self, path: str, json: dict[str, Any] | None = None) -> Any:
-        response = self._session.post(self._url(path), json=json)
-        self._handle_errors(response)
+        response = self._request("POST", path, json=json)
         return response.json() if response.content else None
 
     def _delete(self, path: str) -> None:
-        response = self._session.delete(self._url(path))
-        self._handle_errors(response)
+        self._request("DELETE", path)
 
     # ------------------------------------------------------------------
     # General information
@@ -90,10 +105,11 @@ class Garage61Client:
 
     def get_my_accounts(self) -> list[dict]:
         """Linked accounts (e.g. iRacing) for the current user."""
-        return self._get("/me/accounts")
+        return _items(self._get("/me/accounts"))
 
     def get_my_statistics(self) -> dict:
-        """Personal driving statistics."""
+        """Personal driving statistics: {"drivingStatistics": [...]}, one row
+        per day/track/car/session type."""
         return self._get("/me/statistics")
 
     # ------------------------------------------------------------------
@@ -125,14 +141,17 @@ class Garage61Client:
         teams: list[str] | None = None,
         group: str = "driver",
         limit: int | None = None,
+        offset: int | None = None,
         **extra_params: Any,
-    ) -> list[dict]:
-        """Find laps / lap records.
+    ) -> dict:
+        """Find laps / lap records. Returns one page: {"total": n, "items": [...]}.
 
-        You must supply at least one of `tracks`, `cars`, `drivers`, or
-        `teams` (a bare user is also enough — see the API docs). Any other
-        supported query parameter (e.g. `sessionTypes`, `minLapTime`,
-        `after`) can be passed as a keyword argument.
+        You must supply at least one of `tracks`, `cars`, or a user
+        (`drivers`/`teams`). `group="driver"` (the API default) returns only
+        each driver's personal best; use `group="none"` for every lap. Any
+        other supported query parameter (e.g. `sessionTypes`, `minLapTime`,
+        `after`) can be passed as a keyword argument. Use `find_all_laps` to
+        page through more than 1000 results.
         """
         params = {
             "tracks": tracks,
@@ -141,9 +160,24 @@ class Garage61Client:
             "teams": teams,
             "group": group,
             "limit": limit,
+            "offset": offset,
             **extra_params,
         }
         return self._get("/laps", params=params)
+
+    def find_all_laps(self, *, max_laps: int | None = None, **filters: Any) -> list[dict]:
+        """Like `find_laps`, but follows pagination and returns a flat list of
+        laps (up to `max_laps`, if given)."""
+        laps: list[dict] = []
+        while max_laps is None or len(laps) < max_laps:
+            page_size = _LAPS_PAGE_SIZE if max_laps is None else min(_LAPS_PAGE_SIZE, max_laps - len(laps))
+            page = self.find_laps(limit=page_size, offset=len(laps), **filters)
+            items = _items(page)
+            laps.extend(items)
+            total = page.get("total", 0) if isinstance(page, dict) else len(items)
+            if not items or len(laps) >= total:
+                break
+        return laps
 
     def get_lap(self, lap_id: str) -> dict:
         return self._get(f"/laps/{lap_id}")
@@ -173,13 +207,28 @@ class Garage61Client:
 
     def find_teams(self) -> list[dict]:
         """Teams the current user has joined."""
-        return self._get("/teams")
+        return _items(self._get("/teams"))
 
     def get_team(self, team_id: str) -> dict:
         return self._get(f"/teams/{team_id}")
 
     def get_team_statistics(self, team_id: str) -> dict:
         return self._get(f"/teams/{team_id}/statistics")
+
+
+def _items(data: Any) -> list[dict]:
+    """List endpoints return {"total": n, "items": [...]}; unwrap the items."""
+    if isinstance(data, dict):
+        return data.get("items") or []
+    return data or []
+
+
+def _retry_after(response: requests.Response) -> float | None:
+    """Garage 61 sends Retry-After in whole seconds."""
+    try:
+        return float(response.headers.get("Retry-After", ""))
+    except ValueError:
+        return None
 
 
 def _clean_params(params: dict[str, Any] | None) -> dict[str, Any]:
