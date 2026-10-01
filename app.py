@@ -14,7 +14,7 @@ import requests
 import streamlit as st
 
 from dashboard.data import get_client, get_me, get_my_accounts, get_my_statistics, get_teams, get_team_statistics
-from dashboard.ui import render_account_card, render_linked_accounts, render_stat_tiles, render_teams
+from dashboard.ui import render_account_card, render_driving_stats, render_linked_accounts, render_teams
 from garage61 import Garage61APIError, Garage61AuthError
 
 # One section failing (API error or dropped connection) shouldn't take down the page.
@@ -77,7 +77,7 @@ def main() -> None:
     st.subheader("Driving statistics")
     try:
         stats = get_my_statistics(client)
-        render_stat_tiles(stats)
+        render_driving_stats(stats)
     except _SECTION_ERRORS as exc:
         st.error(f"Couldn't load statistics: {exc}")
 
@@ -97,15 +97,20 @@ def main() -> None:
 
         if teams:
             st.markdown("#### Team statistics")
-            team_names = {t["slug"]: t.get("name", t["slug"]) for t in teams if t.get("slug")}
+            # Teams you own (e.g. OHND Racing) first in the picker.
+            ordered = sorted(teams, key=lambda t: not t.get("isOwner"))
+            team_names = {t["id"]: t.get("name", t["id"]) for t in ordered if t.get("id")}
             if team_names:
-                selected_slug = st.selectbox(
+                selected_id = st.selectbox(
                     "Choose a team",
                     options=list(team_names.keys()),
-                    format_func=lambda slug: team_names[slug],
+                    format_func=lambda team_id: team_names[team_id],
                 )
-                team_stats = get_team_statistics(client, selected_slug)
-                render_stat_tiles(team_stats)
+                # One team's stats failing (e.g. no access) shouldn't hide the team list.
+                try:
+                    render_driving_stats(get_team_statistics(client, selected_id))
+                except _SECTION_ERRORS as exc:
+                    st.warning(f"Couldn't load statistics for this team: {exc}")
     except _SECTION_ERRORS as exc:
         st.error(f"Couldn't load teams: {exc}")
 
