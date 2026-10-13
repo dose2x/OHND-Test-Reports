@@ -117,16 +117,21 @@ class Garage61Client:
     # ------------------------------------------------------------------
 
     def get_car_groups(self) -> list[dict]:
-        return self._get("/car-groups")
+        """Car classes, e.g. {"id": 2, "name": "GT3", "cars": [135, 175, ...]}."""
+        return _items(self._get("/car-groups"))
 
     def get_cars(self) -> list[dict]:
-        return self._get("/cars")
+        """All cars: {"id", "name", "platform", "platform_id"}."""
+        return _items(self._get("/cars"))
 
     def get_platforms(self) -> list[dict]:
-        return self._get("/platforms")
+        """Sim platforms, each with its "seasons" ({"id", "name", "shortName",
+        "start", "end"})."""
+        return _items(self._get("/platforms"))
 
     def get_tracks(self) -> list[dict]:
-        return self._get("/tracks")
+        """All track layouts: {"id", "name", "variant", "platform", "platform_id"}."""
+        return _items(self._get("/tracks"))
 
     # ------------------------------------------------------------------
     # Driving data
