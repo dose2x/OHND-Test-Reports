@@ -49,3 +49,18 @@ def get_teams(_client: Garage61Client) -> list[dict]:
 @st.cache_data(show_spinner=False, ttl=_TTL_SECONDS)
 def get_team_statistics(_client: Garage61Client, team_id: str) -> dict:
     return _client.get_team_statistics(team_id)
+
+
+# Content lookups rarely change, so cache them for a day.
+_LOOKUP_TTL = 24 * 60 * 60
+
+
+@st.cache_data(show_spinner="Loading car and track names…", ttl=_LOOKUP_TTL)
+def get_lookups(_client: Garage61Client) -> dict:
+    """Cars, tracks, car groups and platforms (with iRacing seasons)."""
+    return {
+        "cars": _client.get_cars(),
+        "tracks": _client.get_tracks(),
+        "car_groups": _client.get_car_groups(),
+        "platforms": _client.get_platforms(),
+    }
