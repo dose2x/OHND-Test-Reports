@@ -40,15 +40,28 @@ can be layered on as the project's direction firms up.
 5. **Launch the dashboard:**
 
    ```bash
-   streamlit run app.py
+   python -m streamlit run app.py
    ```
 
-   This opens a browser tab (usually at http://localhost:8501) with an
-   overview of your account: profile info, driving statistics, linked
-   accounts (e.g. iRacing), and your teams (with per-team stats). Use the
-   "Refresh data" button in the sidebar to clear the cache and re-fetch.
-   If `GARAGE61_TOKEN` isn't set yet, the dashboard shows setup
-   instructions instead of crashing.
+   This opens a browser tab (usually at http://localhost:8501) with four
+   pages in the sidebar:
+
+   - **Overview** — profile, driving totals, iRacing ratings, and teams
+     (with per-team stats).
+   - **Tracks & Cars** — laps, time and clean-lap % per track, car and car
+     class, plus your least-clean tracks/cars (50+ laps).
+   - **Seasons** — pick an iRacing season: totals vs the previous season
+     (a season in progress is compared with the same number of weeks), a
+     laps-by-week chart, a week-by-week table, and an all-seasons table.
+   - **Practice vs Race** — clean-lap % per session type, a monthly trend,
+     and the tracks where your race laps are least clean compared with
+     practice.
+
+   These work with a token that only has the `profile` / `analyses`
+   permissions — they use driving statistics plus Garage 61's car, track
+   and season lists, not lap data. Use the "Refresh data" button in the
+   sidebar to re-fetch. If `GARAGE61_TOKEN` isn't set yet, the dashboard
+   shows setup instructions instead of crashing.
 
 6. **(Optional) Sync laps into Cloudflare D1.** A D1 database called
    `ohnd-telemetry` already exists in the OHND Cloudflare account, for
@@ -101,8 +114,14 @@ can be layered on as the project's direction firms up.
 
 ```
 OHND-Test-Reports/
-├── app.py               # Streamlit dashboard entry point (overview page)
+├── app.py               # Streamlit entry point: Overview page + page navigation
+├── views/               # The other dashboard pages
+│   ├── 1_Tracks_and_Cars.py
+│   ├── 2_Seasons.py
+│   └── 3_Practice_vs_Race.py
 ├── dashboard/
+│   ├── analysis.py      # Pandas: names, seasons, per-track/car/session summaries
+│   ├── common.py        # Shared page setup: client, errors, filters
 │   ├── data.py          # Cached wrappers around Garage61Client calls
 │   └── ui.py             # Reusable Streamlit display helpers
 ├── garage61/            # The API client package
@@ -170,15 +189,15 @@ a new token with additional scopes from the
   notifications — Webhooks by Zapier requires a paid plan, so new-lap
   emails are sent directly from `sync_laps.py` via Resend instead (see
   step 7 above).
-- **Resend:** not yet configured — sign up free and add `RESEND_API_KEY`
-  to `.env` per step 7 to enable new-lap email notifications.
-- **Garage 61:** not yet verified end-to-end. Run
-  `python scripts/test_connection.py` with your token in `.env` to confirm
-  it works.
+- **Resend:** configured and tested — sending domain `ohndracing.com`
+  verified, test email delivered.
+- **Garage 61:** token verified working. It has the `profile`, `openid`
+  and `analyses` permissions but not `driving_data`, so the dashboard
+  works but lap sync (`sync_laps.py`) doesn't yet.
 
 ## Next steps
 
-Ideas for where to take this next, once the token is active:
+Ideas for where to take this next, once a token with `driving_data` is available:
 
 - A "Lap Browser" dashboard page: filter laps by track/car/session type,
   then view speed/throttle/brake telemetry traces for a selected lap.
@@ -186,6 +205,6 @@ Ideas for where to take this next, once the token is active:
   telemetry to find where time is gained or lost.
 - A script to bulk-download laps for a track/car into `data/` as CSVs.
 
-Streamlit's [multi-page app convention](https://docs.streamlit.io/develop/concepts/multipage-apps)
-(a `pages/` directory next to `app.py`) is a natural fit for adding the
-pages above.
+New pages go in `views/` and get registered in the `st.navigation` list
+at the bottom of `app.py`. (The folder isn't called `pages/` on purpose:
+Streamlit would otherwise auto-build its own, conflicting navigation.)
