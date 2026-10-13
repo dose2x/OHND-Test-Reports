@@ -1,11 +1,12 @@
 """
 OHND Test Data App — Streamlit dashboard.
 
-Overview page: account info, linked accounts, driving statistics, and
-teams, pulled live from the Garage 61 API.
+Overview page (account info, linked accounts, driving statistics, teams)
+plus the Tracks & Cars, Seasons and Practice vs Race pages in views/,
+all pulled live from the Garage 61 API.
 
 Run with:
-    streamlit run app.py
+    python -m streamlit run app.py
 """
 
 from __future__ import annotations
@@ -15,16 +16,14 @@ import streamlit as st
 
 from dashboard.data import get_client, get_me, get_my_accounts, get_my_statistics, get_teams, get_team_statistics
 from dashboard.ui import render_account_card, render_driving_stats, render_linked_accounts, render_teams
+from dashboard.common import sidebar_refresh
 from garage61 import Garage61APIError, Garage61AuthError
 
 # One section failing (API error or dropped connection) shouldn't take down the page.
 _SECTION_ERRORS = (Garage61APIError, requests.exceptions.RequestException)
 
-st.set_page_config(
-    page_title="OHND Test Data App",
-    page_icon="🏁",
-    layout="wide",
-)
+# Each page's title (Overview, Seasons, ...) becomes the browser tab title.
+st.set_page_config(page_icon="🏁", layout="wide")
 
 
 def render_setup_instructions(detail: str) -> None:
@@ -39,7 +38,7 @@ def render_setup_instructions(detail: str) -> None:
            [garage61.net/developer/applications](https://garage61.net/developer/applications)
            (owned by the OHND Racing team), and paste it into `.env` as
            `GARAGE61_TOKEN`.
-        3. Restart the dashboard (`streamlit run app.py`).
+        3. Restart the dashboard (`python -m streamlit run app.py`).
         """
     )
 
@@ -114,13 +113,15 @@ def main() -> None:
     except _SECTION_ERRORS as exc:
         st.error(f"Couldn't load teams: {exc}")
 
-    with st.sidebar:
-        st.markdown("### OHND Test Data App")
-        st.caption("Data analysis for telemetry to improve in iRacing.")
-        if st.button("Refresh data"):
-            st.cache_data.clear()
-            st.rerun()
+    sidebar_refresh()
 
 
-if __name__ == "__main__":
-    main()
+navigation = st.navigation(
+    [
+        st.Page(main, title="Overview", icon="🏠", default=True),
+        st.Page("views/1_Tracks_and_Cars.py", title="Tracks & Cars", icon="🛣️"),
+        st.Page("views/2_Seasons.py", title="Seasons", icon="📅"),
+        st.Page("views/3_Practice_vs_Race.py", title="Practice vs Race", icon="🏁"),
+    ]
+)
+navigation.run()
